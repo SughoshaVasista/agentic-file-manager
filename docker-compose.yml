@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      - AFMS_DATABASE_PATH=/app/data/files.db
+      - AFMS_FAISS_INDEX_PATH=/app/data/vectors.faiss
+      - AFMS_VECTOR_METADATA_PATH=/app/data/vector_metadata.json
+      - AFMS_LOG_PATH=/app/logs/app.log
+      - AFMS_LOG_LEVEL=INFO
+    restart: unless-stopped

@@ -1,0 +1,112 @@
+# Agentic File Management System Configuration
+
+# Folders to watch for automated organization (for background agent)
+watch_folders:
+  - C:\Users\sugho\Downloads
+  - C:\Users\sugho\Documents
+
+# Organize destination root: where organized files will be moved.
+# If blank, the system defaults to the folder containing the organized files.
+organize_destination_root: C:\tmp\agentic_file_manager\organized_files
+
+# LLM Configuration settings
+llm:
+  enabled: true
+  provider: local                # Options: local, openai, deepseek
+  openai_model_name: "gpt-4o-mini"
+  deepseek_model_name: "deepseek-chat"
+  ollama_model_name: "llama3.1"
+  openai_api_key: ""
+  deepseek_api_key: ""
+  fallback_behavior: "keyword"   # Options: keyword, unsorted
+
+# Sorting rules config
+sorting:
+  hard_rules:
+    - condition: "extension == '.mp4'"
+      destination: "Videos"
+    - condition: "name_contains: 'invoice' AND size_category == 'medium'"
+      destination: "Finance/Invoices"
+  content_similarity:
+    enabled: true
+    threshold: 0.7
+    weight: 0.5
+  extension_mapping:
+    enabled: true
+    weight: 0.2
+    default_map:
+      '.pdf': 'Documents'
+      '.docx': 'Documents'
+      '.txt': 'Documents'
+      '.epub': 'Books'
+      '.jpg': 'Images'
+      '.jpeg': 'Images'
+      '.png': 'Images'
+      '.webp': 'Images'
+      '.bmp': 'Images'
+      '.gif': 'Images'
+      '.mp3': 'Music'
+      '.wav': 'Music'
+      '.m4a': 'Music'
+      '.flac': 'Music'
+      '.mp4': 'Videos'
+      '.mov': 'Videos'
+      '.avi': 'Videos'
+      '.mkv': 'Videos'
+      '.msi': 'Installers'
+      '.torrent': 'Torrents'
+  size_rules:
+    enabled: true
+    weight: 0.1
+    rules:
+      - size_category: 'huge'
+        destination: 'Large_Files'
+  age_rules:
+    enabled: true
+    weight: 0.1
+    rules:
+      - age_category: 'old'
+        destination: 'Archive/Old'
+  learned_preferences:
+    enabled: true
+    weight: 0.3
+
+# File extensions to monitor and process
+file_types_to_process:
+  - .pdf
+  - .docx
+  - .txt
+  - .epub
+  - .jpg
+  - .jpeg
+  - .png
+  - .webp
+  - .bmp
+  - .gif
+  - .mp3
+  - .wav
+  - .m4a
+  - .flac
+  - .mp4
+  - .mov
+  - .avi
+  - .mkv
+  - .msi
+  - .torrent
+
+# Ignore patterns (files matching these will not be processed)
+ignored_patterns:
+  - '*.tmp'
+  - '~*'
+  - '.*'
+
+# Watchdog directory monitor configuration
+monitoring:
+  enabled: true
+  debounce_delay: 2.0  # seconds to wait before acting on modified events
+
+# Preference learning settings
+learning:
+  enabled: true
+  min_corrections_to_start_mining: 1
+  auto_remine_interval_hours: 24
