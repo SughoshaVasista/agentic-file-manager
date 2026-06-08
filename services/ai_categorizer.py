@@ -20,6 +20,7 @@ Return only valid JSON with this schema:
 Rules:
 - Choose one existing folder category when it fits.
 - If no category fits, propose a concise new folder name.
+- You can use nested paths (e.g., 'Documents/Invoices' or 'Media/Images') to group subtypes under a broader type.
 - Confidence must be between 0 and 1.
 - Reason must be short and explainable.
 

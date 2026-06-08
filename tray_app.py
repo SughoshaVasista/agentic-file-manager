@@ -187,20 +187,33 @@ def run_tray() -> None:
     hotkey_thread = threading.Thread(target=hotkey_listener_thread, daemon=True)
     hotkey_thread.start()
     
-    # Run the tray icon application
-    img = create_default_icon()
-    icon_app = pystray.Icon(
-        name="agentic_file_manager",
-        icon=img,
-        title="Agentic File Organizer",
-        menu=setup_menu()
-    )
-    
-    # Show initial welcome notification
-    icon_app.run(setup=lambda icon: icon.notify(
-        "Agentic File Organizer is running. Press Ctrl+Alt+C anywhere to open Rules Chatbot.",
-        title="Agent Active"
-    ))
+    try:
+        # Run the tray icon application
+        img = create_default_icon()
+        icon_app = pystray.Icon(
+            name="agentic_file_manager",
+            icon=img,
+            title="Agentic File Organizer",
+            menu=setup_menu()
+        )
+        
+        # Show initial welcome notification
+        icon_app.run(setup=lambda icon: icon.notify(
+            "Agentic File Organizer is running. Press Ctrl+Alt+C anywhere to open Rules Chatbot.",
+            title="Agent Active"
+        ))
+    except Exception as e:
+        import logging
+        logger = logging.getLogger("tray_app_fallback")
+        logger.warning("System tray GUI could not be initialized: %s", e)
+        logger.info("Falling back to headless console background monitoring mode...")
+        
+        # Keep-alive loop to allow background threads to run
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            agent_service.stop_monitoring()
 
 
 if __name__ == "__main__":

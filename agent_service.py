@@ -70,7 +70,7 @@ class AgentEventHandler(FileSystemEventHandler):
 
     def _dispatch(self, event_type: str, src_path: str, dest_path: str | None = None) -> None:
         # Avoid processing files that are inside the organized destination root directory
-        dest_root = self.config.get("organize_destination_root")
+        dest_root = (self.config.get("organize_destination_root") or "").strip()
         if dest_root:
             dest_root_path = Path(dest_root).expanduser().resolve()
             src_p = Path(src_path).expanduser().resolve()
@@ -105,8 +105,11 @@ def start_monitoring() -> None:
         return
         
     logger.info("Starting file organizer agent...")
-    logger.info("LLM Model Provider: %s", config.get("llm_model"))
-    logger.info("Dry-run Mode: %s", config.get("dry_run"))
+    llm_config = config.get("llm") or {}
+    provider = llm_config.get("provider") or config.get("llm_model") or "local"
+    dry_run = config.get("dry_run", False)
+    logger.info("LLM Model Provider: %s", provider)
+    logger.info("Dry-run Mode: %s", dry_run)
     logger.info("Watch folders: %s", watch_folders)
     
     event_handler = AgentEventHandler(config)
