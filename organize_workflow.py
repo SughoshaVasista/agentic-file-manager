@@ -41,10 +41,11 @@ class WorkflowResult(TypedDict):
 class OrganizeWorkflow:
     """Wires extraction, similarity check, categorization, adaptive decision, and execution."""
 
-    def __init__(self, db_manager: DatabaseManager) -> None:
+    def __init__(self, db_manager: DatabaseManager, destination_root: Path | str | None = None) -> None:
         self._db_manager = db_manager
         self._settings = load_settings()
-        self._root = self._settings.project_root
+        # Use provided destination_root or fall back to project root
+        self._root = Path(destination_root).expanduser().resolve() if destination_root else self._settings.project_root
 
         # Initialize LLM Provider based on settings
         if self._settings.llm_provider == "openai":

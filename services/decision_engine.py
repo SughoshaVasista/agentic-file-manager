@@ -164,6 +164,33 @@ class AdaptiveDecisionEngine:
                     "reasoning": reasoning,
                 }
 
+        # Check for partial / substring match against existing subfolders
+        # e.g., AI says "Images" but user has a "My Images" or "Wallpapers" folder
+        existing_subfolders: list[str] = []
+        try:
+            if self._root.is_dir():
+                existing_subfolders = [
+                    d.name for d in self._root.iterdir()
+                    if d.is_dir() and not d.name.startswith(".")
+                ]
+        except OSError:
+            pass
+
+        ai_cat_lower = ai_category.category.lower()
+        for subfolder in existing_subfolders:
+            sf_lower = subfolder.lower()
+            if ai_cat_lower in sf_lower or sf_lower in ai_cat_lower:
+                destination = self._root / subfolder
+                reasoning.append(
+                    f"Existing subfolder '{subfolder}' partially matches LLM category '{ai_category.category}'."
+                )
+                return {
+                    "destination": str(destination),
+                    "decision_source": "existing_folder_partial_match",
+                    "confidence": min(0.85, ai_category.confidence + 0.05),
+                    "reasoning": reasoning,
+                }
+
         destination = self._root / ai_category.category
         reasoning.append(f"LLM recommended new or unmatched category '{ai_category.category}'.")
         return {

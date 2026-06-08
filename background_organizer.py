@@ -22,7 +22,7 @@ def should_ignore(file_path: str, config: dict) -> bool:
     ext = path.suffix.lower()
     
     # Avoid infinite loops by ignoring files inside the destination directory root
-    dest_root = config.get("organize_destination_root")
+    dest_root = (config.get("organize_destination_root") or "").strip()
     if dest_root:
         dest_root_path = Path(dest_root).expanduser().resolve()
         try:
@@ -60,19 +60,26 @@ def _build_categorizer(llm_model: str, config: dict) -> AICategorizer:
     """Build the AICategorizer provider based on configuration."""
     import os
     settings = load_settings()
-    model = str(llm_model).lower()
     
-    openai_key = config.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
-    deepseek_key = config.get("deepseek_api_key") or os.getenv("DEEPSEEK_API_KEY")
+    # Check if 'llm' dict is present, and extract values from it, else fallback to root config
+    llm_config = config.get("llm") or {}
+    
+    # Determine provider/model
+    provider = llm_config.get("provider") or config.get("llm_model") or "local"
+    model = str(provider).lower()
+    
+    openai_key = llm_config.get("openai_api_key") or config.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
+    deepseek_key = llm_config.get("deepseek_api_key") or config.get("deepseek_api_key") or os.getenv("DEEPSEEK_API_KEY")
     
     if model in ("openai", "gpt-4o-mini"):
-        openai_model_name = config.get("openai_model_name", "gpt-4o-mini")
+        openai_model_name = llm_config.get("openai_model_name") or config.get("openai_model_name") or "gpt-4o-mini"
         return AICategorizer(OpenAIProvider(api_key=openai_key, model=openai_model_name))
     elif model == "deepseek":
-        deepseek_model_name = config.get("deepseek_model_name", "deepseek-chat")
+        deepseek_model_name = llm_config.get("deepseek_model_name") or config.get("deepseek_model_name") or "deepseek-chat"
         return AICategorizer(DeepSeekProvider(api_key=deepseek_key, model=deepseek_model_name))
     elif model in ("ollama", "local"):
-        return AICategorizer(OllamaProvider(settings.ollama_model, settings.ollama_base_url))
+        ollama_model = llm_config.get("ollama_model_name") or settings.ollama_model
+        return AICategorizer(OllamaProvider(ollama_model, settings.ollama_base_url))
     return AICategorizer(KeywordFallbackProvider())
 
 
@@ -105,7 +112,9 @@ def process_file(file_path: str, config: dict) -> dict[str, Any]:
         db_manager.initialize()
         
         # Destination root config evaluation
-        dest_root_str = config.get("organize_destination_root")
+        # When organize_destination_root is empty/blank, organize files
+        # into subfolders of the directory where the file currently lives.
+        dest_root_str = config.get("organize_destination_root", "").strip()
         if dest_root_str:
             destination_root = Path(dest_root_str).expanduser().resolve()
         else:
@@ -200,6 +209,12 @@ def process_file(file_path: str, config: dict) -> dict[str, Any]:
                         )
                 except Exception as exc:
                     logger.warning("Could not update database record path: %s", exc)
+
+                # Post-move step: group files with similar names in the target directory
+                try:
+                    group_similar_files_by_name(planned_destination.parent, path.suffix, config)
+                except Exception as grouping_exc:
+                    logger.warning("Failed to run similarity grouping: %s", grouping_exc)
 
             # Trigger background re-mine if learning enabled
             learning_config = config.get("learning", {})
@@ -302,3 +317,79 @@ def handle_file_event(event_type: str, src_path: str, config: dict, dest_path: s
                 
     except Exception as e:
         logger.exception("Error in handle_file_event for path %s", src_path)
+
+
+def group_similar_files_by_name(dest_dir: Path, file_extension: str, config: dict) -> None:
+    """Scan a directory for files of the same extension with similar names,
+    and group them into a subfolder named after their common prefix/token."""
+    if not dest_dir.exists() or not dest_dir.is_dir():
+        return
+
+    # 1. Find all files with the same extension in the directory (non-recursive)
+    files = [f for f in dest_dir.iterdir() if f.is_file() and f.suffix.lower() == file_extension.lower()]
+    if len(files) < 3:
+        return  # Need at least 3 files to establish a similarity group
+
+    # 2. Tokenize and find common prefixes/tokens
+    import re
+    from collections import defaultdict
+    
+    # Group files by candidate prefixes of tokens
+    groups = defaultdict(list)
+    
+    for f in files:
+        stem = f.stem
+        # Replace non-alphanumeric with spaces, then split
+        tokens = re.findall(r'[a-zA-Z0-9]+', stem.lower())
+        if not tokens:
+            continue
+            
+        # Candidate prefixes: first 1, 2, or 3 tokens joined by underscores
+        for i in range(1, min(len(tokens) + 1, 4)):
+            cand_tokens = tokens[:i]
+            prefix_str = "_".join(cand_tokens)
+            # Skip if prefix is too short or a common generic word
+            if len(prefix_str) >= 3 and prefix_str not in ("the", "and", "for", "draft", "final", "copy", "temp", "file", "document", "new", "version"):
+                groups[prefix_str].append(f)
+
+    # 3. Filter groups that have at least 3 files, preferring longer/more specific prefixes
+    sorted_prefixes = sorted(groups.keys(), key=lambda p: (len(p.split('_')), len(p)), reverse=True)
+    
+    processed_files = set()
+    for prefix in sorted_prefixes:
+        group_files = [f for f in groups[prefix] if f not in processed_files]
+        if len(group_files) >= 3:
+            # Create subfolder name
+            subfolder_name = prefix.replace("_", " ").title()
+            subfolder_path = dest_dir / subfolder_name
+            
+            try:
+                subfolder_path.mkdir(parents=True, exist_ok=True)
+                logger.info("Grouping similar files under prefix '%s' into subdirectory: %s", prefix, subfolder_name)
+                
+                # Move each file in the group to the new subfolder
+                for f in group_files:
+                    dest_file = subfolder_path / f.name
+                    if not dest_file.exists():
+                        f.rename(dest_file)
+                        logger.info("Moved %s -> %s", f.name, dest_file)
+                        processed_files.add(f)
+                        
+                        # Update the database record with the new path
+                        try:
+                            from database.db_manager import DatabaseManager
+                            from config.settings import load_settings
+                            settings = load_settings()
+                            db_manager = DatabaseManager(settings)
+                            db_manager.initialize()
+                            with db_manager.transaction() as conn:
+                                conn.execute(
+                                    "UPDATE files SET path = ? WHERE path = ?",
+                                    (str(dest_file.resolve()), str(f.resolve()))
+                                )
+                        except Exception as db_err:
+                            logger.warning("Could not update database path for grouped file: %s", db_err)
+                    else:
+                        logger.warning("Destination file already exists, skipping rename: %s", dest_file)
+            except Exception as e:
+                logger.exception("Failed to group files for prefix %s: %s", prefix, e)

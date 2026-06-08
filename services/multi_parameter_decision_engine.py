@@ -204,7 +204,60 @@ class MultiParameterDecisionEngine:
             except Exception as exc:
                 logger.warning("AI categorization failed in decision engine: %s", exc)
 
-        # 8. Scoring & Ranking
+        # 8. Existing Subfolder Matching
+        # Scan subfolders in the destination root and prefer existing ones that
+        # semantically match any candidate category name.  This ensures that if
+        # the user already has, say, a "Wallpapers" folder in Downloads, an image
+        # file categorized as "Images" will be redirected into "Wallpapers" when
+        # it is a better contextual fit.
+        existing_subfolders: list[str] = []
+        try:
+            if self._root.is_dir():
+                existing_subfolders = [
+                    d.name for d in self._root.iterdir()
+                    if d.is_dir() and not d.name.startswith(".")
+                ]
+        except OSError:
+            pass
+
+        if existing_subfolders:
+            # Build a quick lookup of lowered existing folder names
+            existing_lower_map: dict[str, str] = {f.lower(): f for f in existing_subfolders}
+
+            # For each candidate, check if an existing subfolder is a better match
+            remapped: dict[str, str] = {}  # old_candidate_key -> new_folder_name
+            for cand_key in list(candidates.keys()):
+                cand_lower = cand_key.lower().replace("/", "").replace("\\", "")
+
+                # Exact match (case-insensitive)
+                if cand_lower in existing_lower_map:
+                    actual = existing_lower_map[cand_lower]
+                    if actual != cand_key:
+                        remapped[cand_key] = actual
+                    continue
+
+                # Substring / partial match: if candidate name is contained in
+                # an existing folder name or vice-versa (e.g. "Images" matches
+                # "My Images", "Wallpapers" might match via content similarity).
+                for ef_lower, ef_actual in existing_lower_map.items():
+                    if cand_lower in ef_lower or ef_lower in cand_lower:
+                        remapped[cand_key] = ef_actual
+                        break
+
+            # Apply remapping: merge scores from old candidate key into the
+            # existing folder key
+            for old_key, new_folder in remapped.items():
+                new_key = str(Path(new_folder).as_posix())
+                decision_log.append(
+                    f"Remapped candidate '{old_key}' -> existing subfolder '{new_folder}'"
+                )
+                if new_key not in candidates:
+                    candidates[new_key] = []
+                # Transfer old scores + add a bonus for matching an existing folder
+                candidates[new_key].extend(candidates.pop(old_key))
+                candidates[new_key].append(("existing_folder_match", 0.25))
+
+        # 9. Scoring & Ranking
         final_scores = {}
         for cand, sources in candidates.items():
             final_scores[cand] = sum(w for _, w in sources)
@@ -229,14 +282,16 @@ class MultiParameterDecisionEngine:
                 "decision_log": "\n".join(decision_log),
             }
 
-        # Resolve tie breaker ranking priority list: learned_preferences > llm_categorization > extension_mapping
+        # Resolve tie breaker ranking priority list: learned_preferences > llm_categorization > existing_folder_match > extension_mapping
         def tie_breaker_score(cand):
             score = 0
             sources = [src for src, _ in candidates[cand]]
             if "learned_preferences" in sources:
-                score += 100
+                score += 1000
             if "llm_categorization" in sources:
-                score += 10
+                score += 100
+            if "existing_folder_match" in sources:
+                score += 50
             if "extension_mapping" in sources:
                 score += 1
             return score

@@ -7,7 +7,7 @@ watch_folders:
 
 # Organize destination root: where organized files will be moved.
 # If blank, the system defaults to the folder containing the organized files.
-organize_destination_root: C:\tmp\agentic_file_manager\organized_files
+organize_destination_root: ""
 
 # LLM Configuration settings
 llm:
@@ -35,25 +35,35 @@ sorting:
     enabled: true
     weight: 0.2
     default_map:
-      '.pdf': 'Documents'
-      '.docx': 'Documents'
-      '.txt': 'Documents'
-      '.epub': 'Books'
-      '.jpg': 'Images'
-      '.jpeg': 'Images'
-      '.png': 'Images'
-      '.webp': 'Images'
-      '.bmp': 'Images'
-      '.gif': 'Images'
-      '.mp3': 'Music'
-      '.wav': 'Music'
-      '.m4a': 'Music'
-      '.flac': 'Music'
-      '.mp4': 'Videos'
-      '.mov': 'Videos'
-      '.avi': 'Videos'
-      '.mkv': 'Videos'
-      '.msi': 'Installers'
+      '.pdf': 'Documents/PDFs'
+      '.docx': 'Documents/Word'
+      '.doc': 'Documents/Word'
+      '.txt': 'Documents/Text'
+      '.epub': 'Documents/eBooks'
+      '.mobi': 'Documents/eBooks'
+      '.cbr': 'Documents/Comics'
+      '.cbz': 'Documents/Comics'
+      '.xlsx': 'Documents/Spreadsheets'
+      '.csv': 'Documents/Spreadsheets'
+      '.pptx': 'Documents/Presentations'
+      '.jpg': 'Media/Images'
+      '.jpeg': 'Media/Images'
+      '.png': 'Media/Images'
+      '.webp': 'Media/Images'
+      '.bmp': 'Media/Images'
+      '.gif': 'Media/Images'
+      '.mp3': 'Media/Music'
+      '.wav': 'Media/Music'
+      '.m4a': 'Media/Music'
+      '.flac': 'Media/Music'
+      '.mp4': 'Media/Videos'
+      '.mov': 'Media/Videos'
+      '.avi': 'Media/Videos'
+      '.mkv': 'Media/Videos'
+      '.msi': 'Software/Installers'
+      '.exe': 'Software/Executables'
+      '.zip': 'Software/Archives'
+      '.rar': 'Software/Archives'
       '.torrent': 'Torrents'
   size_rules:
     enabled: true
