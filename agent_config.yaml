@@ -1,4 +1,9 @@
-# Agentic File Management System Configuration
+# AFMS Configuration — agent_config.yaml
+# Edit to customise folder watching, file type mappings, LLM provider, and performance.
+# Restart agent_service.py after any changes.
+
+# Full paths to folders that are never organized
+protected_folders: []
 
 # Folders to watch for automated organization (for background agent)
 watch_folders:
@@ -109,6 +114,11 @@ ignored_patterns:
   - '*.tmp'
   - '~*'
   - '.*'
+  - '~$*'
+  - '*.part'
+  - '*.crdownload'
+  - '.DS_Store'
+  - 'Thumbs.db'
 
 # Watchdog directory monitor configuration
 monitoring:
@@ -120,3 +130,10 @@ learning:
   enabled: true
   min_corrections_to_start_mining: 1
   auto_remine_interval_hours: 24
+  mine_every_n_moves: 25
+
+# Performance and resource settings
+performance:
+  worker_threads: 0            # 0 = auto (folder_count x2, min 4 max 8)
+  stabilization_delay_ms: 500  # delay before processing on_modified events
+  services_cache_enabled: true

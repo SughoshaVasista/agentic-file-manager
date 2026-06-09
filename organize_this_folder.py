@@ -18,6 +18,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Ensure we can find local packages
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -115,6 +116,22 @@ def run_learn_mode(target_folder: Path, db_manager: DatabaseManager) -> None:
         logger.info("Successfully updated preference mining rules from corrections!")
     else:
         logger.info("No new corrections were learned.")
+
+
+def _categorize_one(f_path: Path, engine: MultiParameterDecisionEngine, config: dict) -> dict | None:
+    try:
+        features = extract_features(f_path)
+        decision = engine.get_destination(features, config)
+        dest_path = Path(decision["destination"])
+        return {
+            "source": f_path,
+            "dest": dest_path,
+            "reason": decision["reasoning"][0] if decision["reasoning"] else "",
+            "log": decision["decision_log"]
+        }
+    except Exception as exc:
+        logger.error("Could not categorize %s: %s", f_path.name, exc)
+        return None
 
 
 def main() -> None:
@@ -246,20 +263,18 @@ def main() -> None:
     )
 
     planned_moves = []
+    total = len(files_to_organize)
+    done = 0
 
-    for f_path in files_to_organize:
-        try:
-            features = extract_features(f_path)
-            decision = engine.get_destination(features, config)
-            dest_path = Path(decision["destination"])
-            planned_moves.append({
-                "source": f_path,
-                "dest": dest_path,
-                "reason": decision["reasoning"][0] if decision["reasoning"] else "",
-                "log": decision["decision_log"]
-            })
-        except Exception as exc:
-            logger.error("Could not categorize %s: %s", f_path.name, exc)
+    with ThreadPoolExecutor(max_workers=6) as executor:
+        futures = {executor.submit(_categorize_one, f_path, engine, config): f_path for f_path in files_to_organize}
+        for future in as_completed(futures):
+            res = future.result()
+            if res:
+                planned_moves.append(res)
+            done += 1
+            print(f"\r  Categorizing {done}/{total} files...", end="", flush=True)
+    print()
 
     if not planned_moves:
         logger.info("No folder moves were scheduled.")
@@ -311,7 +326,8 @@ def main() -> None:
 
     for move in planned_moves:
         processed += 1
-        res = executor.move_file(move["source"], move["dest"] / move["source"].name)
+        final_dest = move["dest"] if move["dest"].name == move["source"].name else move["dest"] / move["source"].name
+        res = executor.move_file(move["source"], final_dest)
         status = "success" if res.success else "failed"
         
         if res.success:

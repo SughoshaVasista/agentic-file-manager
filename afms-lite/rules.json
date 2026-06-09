@@ -1,0 +1,13 @@
+{
+  "invoice_*": "Finance",
+  "receipt_*": "Finance",
+  "statement_*": "Finance",
+  "resume_*": "Documents",
+  "cv_*": "Documents",
+  "screenshot*": "Screenshots",
+  "screen shot*": "Screenshots",
+  "IMG_*": "Images",
+  "DSC_*": "Images",
+  "recording_*": "Recordings",
+  "zoom_*": "Recordings"
+}

@@ -10,6 +10,7 @@ import signal
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from watchdog.events import FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
@@ -36,6 +37,7 @@ observers: list[Observer] = []
 is_paused = False
 files_processed_count = 0
 status_lock = threading.Lock()
+_executor: ThreadPoolExecutor | None = None
 
 
 class AgentEventHandler(FileSystemEventHandler):
@@ -54,7 +56,7 @@ class AgentEventHandler(FileSystemEventHandler):
         if event.is_directory or is_paused:
             return
         logger.debug("File modified: %s", event.src_path)
-        self._dispatch("modified", event.src_path)
+        threading.Timer(0.5, lambda: self._dispatch("modified", event.src_path)).start()
 
     def on_deleted(self, event: FileSystemEvent) -> None:
         if event.is_directory or is_paused:
@@ -90,13 +92,37 @@ class AgentEventHandler(FileSystemEventHandler):
                     with status_lock:
                         files_processed_count += 1
 
-        t = threading.Thread(target=run_handler, daemon=True)
-        t.start()
+        if _executor:
+            _executor.submit(run_handler)
+
+
+def scan_and_organize_all() -> None:
+    """Scan all watch folders and process any existing files."""
+    logger.info("Running initial startup scan of watch folders...")
+    config = config_manager.get_config()
+    watch_folders = config.get("watch_folders", [])
+    
+    for folder in watch_folders:
+        path = Path(folder).expanduser().resolve()
+        if path.exists() and path.is_dir():
+            try:
+                # Recursively find all files
+                for file_path in path.rglob("*"):
+                    if file_path.is_file():
+                        str_path = str(file_path.resolve())
+                        if not background_organizer.should_ignore(str_path, config):
+                            logger.info("Startup scan found unsorted file: %s. Submitting for sorting...", str_path)
+                            def run_handler_for_file(p=str_path):
+                                background_organizer.handle_file_event("created", p, config)
+                            if _executor:
+                                _executor.submit(run_handler_for_file)
+            except Exception as e:
+                logger.error("Error during startup scan of %s: %s", folder, e)
 
 
 def start_monitoring() -> None:
     """Start watchdog observers for all configured folders."""
-    global observers
+    global observers, _executor
     config = config_manager.get_config()
     watch_folders = config.get("watch_folders", [])
     
@@ -111,6 +137,10 @@ def start_monitoring() -> None:
     logger.info("LLM Model Provider: %s", provider)
     logger.info("Dry-run Mode: %s", dry_run)
     logger.info("Watch folders: %s", watch_folders)
+    
+    worker_count = max(4, min(len(watch_folders) * 2, 8))
+    _executor = ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="afms-worker")
+    background_organizer.reset_services_cache()
     
     event_handler = AgentEventHandler(config)
     
@@ -132,6 +162,9 @@ def start_monitoring() -> None:
 
     # Start the periodic background preferences miner thread
     start_preference_miner_scheduler()
+
+    # Run initial startup scan of watch folders to sort existing files
+    scan_and_organize_all()
 
 
 def start_preference_miner_scheduler() -> None:
@@ -163,8 +196,11 @@ def start_preference_miner_scheduler() -> None:
 
 def stop_monitoring() -> None:
     """Stop all active observers."""
-    global observers
+    global observers, _executor
     logger.info("Stopping all file monitoring observers...")
+    if _executor:
+        _executor.shutdown(wait=False)
+    _executor = None
     for observer in observers:
         observer.stop()
     for observer in observers:

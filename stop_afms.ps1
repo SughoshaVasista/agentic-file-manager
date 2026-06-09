@@ -14,7 +14,7 @@ $killed = 0
 
 $targets = @("agent_service.py", "tray_app.py", "background_organizer.py", "organize_this_folder.py")
 
-$allPython = Get-CimInstance Win32_Process -Filter "Name = 'python.exe'" -ErrorAction SilentlyContinue
+$allPython = Get-CimInstance Win32_Process -Filter "Name = 'python.exe' OR Name = 'pythonw.exe'" -ErrorAction SilentlyContinue
 
 foreach ($proc in $allPython) {
     foreach ($target in $targets) {
