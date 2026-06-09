@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import fnmatch
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -12,8 +13,101 @@ from config.settings import load_settings
 from database.db_manager import DatabaseManager
 from database.repositories import FileRepository
 from services.ai_categorizer import AICategorizer, KeywordFallbackProvider, OpenAIProvider, OllamaProvider, DeepSeekProvider
+from services.feature_extractor import extract_features
+from services.multi_parameter_decision_engine import MultiParameterDecisionEngine
+from services.file_executor import FileExecutor
+from services.action_logger import ActionLogger
+from services.correction_tracker import CorrectionTracker
 
 logger = logging.getLogger(__name__)
+
+# Service singleton cache
+_services_cache: dict = {}
+_services_lock = threading.Lock()
+
+# Throttle the preference miner
+_moves_since_mine = 0
+_MINE_EVERY_N = 25
+_mine_lock = threading.Lock()
+
+
+
+def _get_services(config: dict) -> dict:
+    global _services_cache
+    with _services_lock:
+        if _services_cache:
+            return _services_cache
+
+        settings = load_settings()
+        db_manager = DatabaseManager(settings)
+        db_manager.initialize()
+
+        # Load similarity services
+        from services.embeddings import EmbeddingService
+        from services.vector_store import VectorStore
+        from services.similarity_service import SimilarityService
+
+        embedding_service = None
+        vector_store = None
+        similarity_service = None
+        try:
+            embedding_service = EmbeddingService(settings.embedding_model, settings.batch_embed_size)
+            vector_store = VectorStore(
+                dimensions=384,
+                index_path=settings.faiss_index_path,
+                metadata_path=settings.vector_metadata_path,
+            )
+            vector_store.load()
+            similarity_service = SimilarityService(vector_store)
+        except Exception as exc:
+            logger.warning("Could not initialize similarity checking: %s", exc)
+            embedding_service = None
+            vector_store = None
+            similarity_service = None
+
+        provider = _build_categorizer(config.get("llm_model", "local"), config)
+        categorizer = AICategorizer(provider)
+
+        _services_cache = {
+            "settings": settings,
+            "db_manager": db_manager,
+            "embedding_service": embedding_service,
+            "vector_store": vector_store,
+            "similarity_service": similarity_service,
+            "categorizer": categorizer
+        }
+        return _services_cache
+
+
+def reset_services_cache() -> None:
+    with _services_lock:
+        _services_cache.clear()
+
+
+def _maybe_run_miner(db_manager: DatabaseManager, config: dict) -> None:
+    global _moves_since_mine
+    learning_config = config.get("learning", {})
+    if not learning_config.get("enabled", True):
+        return
+
+    mine_every = learning_config.get("mine_every_n_moves", _MINE_EVERY_N)
+
+    with _mine_lock:
+        _moves_since_mine += 1
+        if _moves_since_mine >= mine_every:
+            _moves_since_mine = 0
+            
+            def run_miner():
+                try:
+                    from services.correction_tracker import CorrectionTracker
+                    tracker = CorrectionTracker(db_manager)
+                    from services.preference_miner import PreferenceMiner
+                    m = PreferenceMiner(tracker)
+                    m.mine_rules()
+                except Exception as exc:
+                    logger.warning("Background preference auto-mining failed: %s", exc)
+
+            threading.Thread(target=run_miner, daemon=True).start()
 
 
 def should_ignore(file_path: str, config: dict) -> bool:
@@ -28,8 +122,8 @@ def should_ignore(file_path: str, config: dict) -> bool:
         try:
             if dest_root_path in path.parents or path == dest_root_path:
                 return True
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Suppressed error in dest_root_path check: %s", exc)
             
     # Avoid loops by ignoring files already inside any subdirectory of a watched folder
     # (e.g. if file is inside C:\Users\sugho\Downloads\Finance\file.txt, it's in a subdirectory of Downloads)
@@ -39,8 +133,19 @@ def should_ignore(file_path: str, config: dict) -> bool:
         try:
             if folder_path in path.parents and path.parent != folder_path:
                 return True
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Suppressed error in watch_folders check: %s", exc)
+            
+    # Protected folders check
+    protected = config.get("protected_folders", [])
+    for prot_folder in protected:
+        prot_path = Path(prot_folder).expanduser().resolve()
+        try:
+            if prot_path == path.parent or prot_path in path.parents:
+                logger.debug("Protected folder — skipping: %s", file_path)
+                return True
+        except Exception as exc:
+            logger.debug("Suppressed error in protected folder check: %s", exc)
             
     # Check extension
     allowed_exts = [t.lower() for t in config.get("file_types_to_process", [])]
@@ -106,10 +211,13 @@ def process_file(file_path: str, config: dict) -> dict[str, Any]:
         return result
 
     try:
-        # Load settings and db_manager
-        settings = load_settings()
-        db_manager = DatabaseManager(settings)
-        db_manager.initialize()
+        # Get cached services
+        services = _get_services(config)
+        settings = services["settings"]
+        db_manager = services["db_manager"]
+        embedding_service = services["embedding_service"]
+        similarity_service = services["similarity_service"]
+        categorizer = services["categorizer"]
         
         # Destination root config evaluation
         # When organize_destination_root is empty/blank, organize files
@@ -119,35 +227,6 @@ def process_file(file_path: str, config: dict) -> dict[str, Any]:
             destination_root = Path(dest_root_str).expanduser().resolve()
         else:
             destination_root = path.parent
-
-        # Load similarity services
-        from services.embeddings import EmbeddingService
-        from services.vector_store import VectorStore
-        from services.similarity_service import SimilarityService
-        from services.ai_categorizer import AICategorizer
-        from services.feature_extractor import extract_features
-        from services.multi_parameter_decision_engine import MultiParameterDecisionEngine
-        from services.file_executor import FileExecutor
-        from services.action_logger import ActionLogger
-        from services.correction_tracker import CorrectionTracker
-
-        similarity_service = None
-        embedding_service = None
-        try:
-            embedding_service = EmbeddingService(settings.embedding_model, settings.batch_embed_size)
-            vector_store = VectorStore(
-                dimensions=384,
-                index_path=settings.faiss_index_path,
-                metadata_path=settings.vector_metadata_path,
-            )
-            vector_store.load()
-            similarity_service = SimilarityService(vector_store)
-        except Exception as exc:
-            logger.warning("Could not initialize similarity checking: %s", exc)
-
-        # Build categorizer
-        provider = _build_categorizer(config.get("llm_model", "local"), config)
-        categorizer = AICategorizer(provider)
 
         # Initialize Decision Engine
         engine = MultiParameterDecisionEngine(
@@ -216,19 +295,8 @@ def process_file(file_path: str, config: dict) -> dict[str, Any]:
                 except Exception as grouping_exc:
                     logger.warning("Failed to run similarity grouping: %s", grouping_exc)
 
-            # Trigger background re-mine if learning enabled
-            learning_config = config.get("learning", {})
-            if learning_config.get("enabled", True):
-                def run_miner():
-                    try:
-                        tracker = CorrectionTracker(db_manager)
-                        from services.preference_miner import PreferenceMiner
-                        m = PreferenceMiner(tracker)
-                        m.mine_rules()
-                    except Exception as exc:
-                        logger.warning("Background preference auto-mining failed: %s", exc)
-                import threading
-                threading.Thread(target=run_miner, daemon=True).start()
+            if not dry_run and action_res.success:
+                _maybe_run_miner(db_manager, config)
             
     except Exception as e:
         logger.exception("Failed to process file: %s", file_path)
@@ -279,8 +347,8 @@ def handle_file_event(event_type: str, src_path: str, config: dict, dest_path: s
                                     try:
                                         extracted = ContentExtractor().extract(dest_p)
                                         content_summary = extracted.get("content", "")[:200]
-                                    except Exception:
-                                        pass
+                                    except Exception as exc:
+                                        logger.debug("Suppressed error: %s", exc)
                                 
                                 tracker.store_detailed_correction({
                                     "file_id": row["id"],
@@ -377,11 +445,17 @@ def group_similar_files_by_name(dest_dir: Path, file_extension: str, config: dic
                         
                         # Update the database record with the new path
                         try:
-                            from database.db_manager import DatabaseManager
-                            from config.settings import load_settings
-                            settings = load_settings()
-                            db_manager = DatabaseManager(settings)
-                            db_manager.initialize()
+                            db_manager = None
+                            if _services_cache:
+                                services = _get_services({})
+                                db_manager = services.get("db_manager")
+                            
+                            if not db_manager:
+                                from database.db_manager import DatabaseManager
+                                from config.settings import load_settings
+                                settings = load_settings()
+                                db_manager = DatabaseManager(settings)
+                                db_manager.initialize()
                             with db_manager.transaction() as conn:
                                 conn.execute(
                                     "UPDATE files SET path = ? WHERE path = ?",

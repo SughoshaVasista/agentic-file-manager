@@ -1,0 +1,86 @@
+# AFMS Lite Configuration
+# Edit this file. Restart watcher.py after changes.
+
+watch_folders: []
+# Add folders to watch, one per line, e.g.:
+#   - "C:/Users/YourName/Desktop"
+#   - "C:/Users/YourName/Downloads"
+
+protected_folders: []
+# These folders are shown in UI but NEVER organized.
+# e.g.:
+#   - "C:/Users/YourName/Documents/Private"
+
+llm:
+  provider: "openai"        # openai | ollama | none
+  openai_api_key: ""        # or set env var OPENAI_API_KEY
+  openai_model: "gpt-4o-mini"
+  ollama_model: "llama3.1"
+  ollama_url: "http://localhost:11434"
+  batch_size: 30            # how many files per LLM call
+
+rules_file: "afms-lite/rules.json"
+log_file: "afms-lite/moves.log"
+
+skip_extensions:
+  - ".lnk"
+  - ".url"
+  - ".exe"
+  - ".com"
+  - ".msc"
+  - ".pif"
+
+ignore_patterns:
+  - "*.tmp"
+  - "~$*"
+  - "*.part"
+  - "*.crdownload"
+  - ".DS_Store"
+  - "Thumbs.db"
+  - "desktop.ini"
+
+file_type_mappings:
+  ".pdf":   "Documents"
+  ".doc":   "Documents"
+  ".docx":  "Documents"
+  ".txt":   "Documents"
+  ".md":    "Documents"
+  ".xls":   "Spreadsheets"
+  ".xlsx":  "Spreadsheets"
+  ".csv":   "Spreadsheets"
+  ".ppt":   "Presentations"
+  ".pptx":  "Presentations"
+  ".jpg":   "Images"
+  ".jpeg":  "Images"
+  ".png":   "Images"
+  ".gif":   "Images"
+  ".webp":  "Images"
+  ".svg":   "Images"
+  ".heic":  "Images"
+  ".mp4":   "Videos"
+  ".mkv":   "Videos"
+  ".mov":   "Videos"
+  ".avi":   "Videos"
+  ".mp3":   "Music"
+  ".wav":   "Music"
+  ".flac":  "Music"
+  ".aac":   "Music"
+  ".zip":   "Archives"
+  ".rar":   "Archives"
+  ".7z":    "Archives"
+  ".tar":   "Archives"
+  ".gz":    "Archives"
+  ".msi":   "Installers"
+  ".dmg":   "Installers"
+  ".deb":   "Installers"
+  ".iso":   "DiskImages"
+  ".torrent": "Torrents"
+  ".py":    "Code"
+  ".js":    "Code"
+  ".ts":    "Code"
+  ".html":  "Code"
+  ".css":   "Code"
+  ".json":  "Code"
+  ".sh":    "Code"
+  ".bat":   "Code"
+  ".ipynb": "Code"
