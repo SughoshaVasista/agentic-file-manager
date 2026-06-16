@@ -2,8 +2,7 @@
 
 # Folders to watch for automated organization (for background agent)
 watch_folders:
-  - C:\Users\sugho\Downloads
-  - C:\Users\sugho\Documents
+  - C:\Users\sugho\FIle-sort\agentic-file-manager\test_demo
 
 # Organize destination root: where organized files will be moved.
 # If blank, the system defaults to the folder containing the organized files.
@@ -103,6 +102,9 @@ file_types_to_process:
   - .mkv
   - .msi
   - .torrent
+  - .cbr
+  - .zip
+  - .exe
 
 # Ignore patterns (files matching these will not be processed)
 ignored_patterns:
