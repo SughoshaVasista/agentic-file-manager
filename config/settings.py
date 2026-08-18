@@ -24,7 +24,6 @@ class AppSettings:
     schema_path: Path
     migrations_path: Path
     log_path: Path
-    log_level: str
     batch_size: int
     embedding_model: str
     faiss_index_path: Path
@@ -36,30 +35,107 @@ class AppSettings:
     ollama_model: str
     ollama_base_url: str
 
+    # Optional settings are placed at the end so existing code that
+    # constructs AppSettings manually remains compatible.
+    log_level: str = "INFO"
+    app_password: str = ""
+
 
 def load_settings() -> AppSettings:
     """Load application settings from environment variables and defaults."""
 
-    database_path = Path(os.getenv("AFMS_DATABASE_PATH", PROJECT_ROOT / "files.db"))
-    schema_path = Path(os.getenv("AFMS_SCHEMA_PATH", PROJECT_ROOT / "database" / "schema.sql"))
-    migrations_path = Path(os.getenv("AFMS_MIGRATIONS_PATH", PROJECT_ROOT / "database" / "migrations"))
-    log_path = Path(os.getenv("AFMS_LOG_PATH", PROJECT_ROOT / "app.log"))
-    batch_size = int(os.getenv("AFMS_BATCH_SIZE", "500"))
+    database_path = Path(
+        os.getenv(
+            "AFMS_DATABASE_PATH",
+            PROJECT_ROOT / "files.db",
+        )
+    )
+
+    schema_path = Path(
+        os.getenv(
+            "AFMS_SCHEMA_PATH",
+            PROJECT_ROOT / "database" / "schema.sql",
+        )
+    )
+
+    migrations_path = Path(
+        os.getenv(
+            "AFMS_MIGRATIONS_PATH",
+            PROJECT_ROOT / "database" / "migrations",
+        )
+    )
+
+    log_path = Path(
+        os.getenv(
+            "AFMS_LOG_PATH",
+            PROJECT_ROOT / "app.log",
+        )
+    )
+
+    batch_size = int(
+        os.getenv(
+            "AFMS_BATCH_SIZE",
+            "500",
+        )
+    )
+
     return AppSettings(
         project_root=PROJECT_ROOT,
         database_path=database_path,
         schema_path=schema_path,
         migrations_path=migrations_path,
         log_path=log_path,
-        log_level=os.getenv("AFMS_LOG_LEVEL", "INFO"),
         batch_size=batch_size,
-        embedding_model=os.getenv("AFMS_EMBEDDING_MODEL", "all-MiniLM-L6-v2"),
-        faiss_index_path=Path(os.getenv("AFMS_FAISS_INDEX_PATH", PROJECT_ROOT / "vectors.faiss")),
-        vector_metadata_path=Path(os.getenv("AFMS_VECTOR_METADATA_PATH", PROJECT_ROOT / "vector_metadata.json")),
-        max_document_size=int(os.getenv("AFMS_MAX_DOCUMENT_SIZE", "5000000")),
-        batch_embed_size=int(os.getenv("AFMS_BATCH_EMBED_SIZE", "64")),
-        llm_provider=os.getenv("AFMS_LLM_PROVIDER", "ollama"),
-        openai_model=os.getenv("AFMS_OPENAI_MODEL", "gpt-4.1-mini"),
-        ollama_model=os.getenv("AFMS_OLLAMA_MODEL", "llama3.1"),
-        ollama_base_url=os.getenv("AFMS_OLLAMA_BASE_URL", "http://localhost:11434"),
+        embedding_model=os.getenv(
+            "AFMS_EMBEDDING_MODEL",
+            "all-MiniLM-L6-v2",
+        ),
+        faiss_index_path=Path(
+            os.getenv(
+                "AFMS_FAISS_INDEX_PATH",
+                PROJECT_ROOT / "vectors.faiss",
+            )
+        ),
+        vector_metadata_path=Path(
+            os.getenv(
+                "AFMS_VECTOR_METADATA_PATH",
+                PROJECT_ROOT / "vector_metadata.json",
+            )
+        ),
+        max_document_size=int(
+            os.getenv(
+                "AFMS_MAX_DOCUMENT_SIZE",
+                "5000000",
+            )
+        ),
+        batch_embed_size=int(
+            os.getenv(
+                "AFMS_BATCH_EMBED_SIZE",
+                "64",
+            )
+        ),
+        llm_provider=os.getenv(
+            "AFMS_LLM_PROVIDER",
+            "ollama",
+        ),
+        openai_model=os.getenv(
+            "AFMS_OPENAI_MODEL",
+            "gpt-4.1-mini",
+        ),
+        ollama_model=os.getenv(
+            "AFMS_OLLAMA_MODEL",
+            "llama3.1",
+        ),
+        ollama_base_url=os.getenv(
+            "AFMS_OLLAMA_BASE_URL",
+            "http://localhost:11434",
+        ),
+        log_level=os.getenv(
+            "AFMS_LOG_LEVEL",
+            "INFO",
+        ),
+        app_password=os.getenv(
+            "AFMS_APP_PASSWORD",
+            "",
+        ),
     )

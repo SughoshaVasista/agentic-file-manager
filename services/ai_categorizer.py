@@ -159,16 +159,37 @@ class KeywordFallbackProvider(BaseLLMProvider):
 
     def generate_json(self, prompt: str) -> dict[str, Any]:
         lowered = prompt.lower()
-        if "invoice" in lowered or "receipt" in lowered:
+
+        # The prompt contains instructions and examples that may contain
+        # category keywords. Only inspect the actual file summary.
+        file_content = lowered
+
+        if "file summary:" in lowered:
+            file_content = lowered.split(
+                "file summary:",
+                1,
+            )[1]
+
+            if "metadata:" in file_content:
+                file_content = file_content.split(
+                    "metadata:",
+                    1,
+                )[0]
+
+        if "invoice" in file_content or "receipt" in file_content:
             category = "Finance"
-        elif "resume" in lowered or "cv" in lowered:
+        elif "resume" in file_content or "cv" in file_content:
             category = "Career"
-        elif "dbms" in lowered or "database" in lowered:
+        elif "dbms" in file_content or "database" in file_content:
             category = "College"
         else:
             category = "General"
-        return {"category": category, "confidence": 0.6, "reason": "Matched deterministic keyword signals."}
 
+        return {
+            "category": category,
+            "confidence": 0.6,
+            "reason": "Matched deterministic keyword signals.",
+        }
 
 class AICategorizer:
     """Builds prompts, invokes an LLM strategy, and validates category output."""
